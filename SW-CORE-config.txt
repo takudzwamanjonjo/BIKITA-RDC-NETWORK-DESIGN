@@ -1,0 +1,170 @@
+! ============================================================
+! DEVICE: SW-CORE (Cisco Catalyst 3560 or 3650)
+! ROLE:   Layer 3 Core Switch — VLAN creation, trunking,
+!         inter-VLAN SVIs, uplink to router
+! PROJECT: Bikita RDC Multi-Department Network Design
+! ============================================================
+!
+! HOW TO PASTE THIS CONFIG IN PACKET TRACER:
+!   1. Click the Switch device
+!   2. Go to CLI tab
+!   3. Press Enter, type: enable
+!   4. Type: configure terminal
+!   5. Paste everything below this line
+! ============================================================
+
+hostname SW-CORE
+no ip domain-lookup
+enable secret cisco123
+!
+! ============================================================
+! VLAN DATABASE — create all department VLANs
+! ============================================================
+vlan 10
+ name Administration
+vlan 20
+ name Finance
+vlan 30
+ name Engineering
+vlan 40
+ name HR-Payroll
+vlan 50
+ name Servers-IT
+vlan 60
+ name Management
+!
+! ============================================================
+! SVI INTERFACES — Layer 3 gateway per VLAN on the switch
+! (Only needed if doing routing ON the switch — 
+!  if routing on the router via subinterfaces, SVIs are 
+!  optional but useful for switch management)
+! ============================================================
+interface Vlan10
+ description Administration-Gateway
+ ip address 192.168.10.1 255.255.255.192
+ no shutdown
+!
+interface Vlan20
+ description Finance-Gateway
+ ip address 192.168.20.1 255.255.255.224
+ no shutdown
+!
+interface Vlan30
+ description Engineering-Gateway
+ ip address 192.168.30.1 255.255.255.224
+ no shutdown
+!
+interface Vlan40
+ description HR-Payroll-Gateway
+ ip address 192.168.40.1 255.255.255.240
+ no shutdown
+!
+interface Vlan50
+ description Servers-IT-Gateway
+ ip address 192.168.50.1 255.255.255.248
+ no shutdown
+!
+interface Vlan60
+ description Management-Gateway
+ ip address 192.168.60.1 255.255.255.252
+ no shutdown
+!
+! ============================================================
+! TRUNK PORT — uplink to Router (GigabitEthernet0/1 on switch)
+! Carries all VLANs to the router subinterfaces
+! ============================================================
+interface GigabitEthernet0/1
+ description UPLINK-TO-ROUTER
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30,40,50,60
+ no shutdown
+!
+! ============================================================
+! ACCESS PORTS — assign each port to its department VLAN
+!
+! VLAN 10 — Administration (ports Fa0/1 - Fa0/8)
+! ============================================================
+interface range FastEthernet0/1 - 8
+ description Admin-Workstations
+ switchport mode access
+ switchport access vlan 10
+ spanning-tree portfast
+ no shutdown
+!
+! VLAN 20 — Finance (ports Fa0/9 - Fa0/13)
+interface range FastEthernet0/9 - 13
+ description Finance-Workstations
+ switchport mode access
+ switchport access vlan 20
+ spanning-tree portfast
+ no shutdown
+!
+! VLAN 30 — Engineering (ports Fa0/14 - Fa0/18)
+interface range FastEthernet0/14 - 18
+ description Engineering-Workstations
+ switchport mode access
+ switchport access vlan 30
+ spanning-tree portfast
+ no shutdown
+!
+! VLAN 40 — HR & Payroll (ports Fa0/19 - Fa0/22)
+interface range FastEthernet0/19 - 22
+ description HR-Payroll-Workstations
+ switchport mode access
+ switchport access vlan 40
+ spanning-tree portfast
+ no shutdown
+!
+! VLAN 50 — Servers / IT (ports Fa0/23 - Fa0/24)
+interface range FastEthernet0/23 - 24
+ description Server-and-IT-Ports
+ switchport mode access
+ switchport access vlan 50
+ spanning-tree portfast
+ no shutdown
+!
+! VLAN 60 — Management (GigabitEthernet0/2)
+interface GigabitEthernet0/2
+ description Management-Port
+ switchport mode access
+ switchport access vlan 60
+ no shutdown
+!
+! ============================================================
+! MANAGEMENT SVI — for SSH access to switch itself
+! ============================================================
+interface Vlan60
+ ip address 192.168.60.2 255.255.255.252
+ no shutdown
+!
+ip default-gateway 192.168.60.1
+!
+! ============================================================
+! IP ROUTING — enable Layer 3 routing on the switch
+! ============================================================
+ip routing
+!
+! ============================================================
+! VTY LINES — SSH management
+! ============================================================
+username admin privilege 15 secret admin123
+!
+line vty 0 15
+ login local
+ transport input ssh
+!
+line con 0
+ password cisco123
+ login
+!
+crypto key generate rsa modulus 1024
+ip ssh version 2
+!
+! ============================================================
+! SPANNING TREE — set switch as root for all VLANs
+! ============================================================
+spanning-tree mode pvst
+spanning-tree vlan 10,20,30,40,50,60 priority 4096
+!
+end

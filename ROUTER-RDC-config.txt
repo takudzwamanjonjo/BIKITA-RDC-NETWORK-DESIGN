@@ -1,0 +1,179 @@
+! ============================================================
+! DEVICE: ROUTER-RDC (Cisco 2911 or ISR 4321)
+! ROLE:   Edge Router — NAT, inter-VLAN routing, WAN uplink
+! PROJECT: Bikita RDC Multi-Department Network Design
+! ============================================================
+!
+! HOW TO PASTE THIS CONFIG IN PACKET TRACER:
+!   1. Click the Router device
+!   2. Go to CLI tab
+!   3. Press Enter, type: enable
+!   4. Type: configure terminal
+!   5. Paste everything below this line
+! ============================================================
+
+hostname ROUTER-RDC
+no ip domain-lookup
+enable secret cisco123
+!
+! --- Username for management ---
+username admin privilege 15 secret admin123
+!
+! ============================================================
+! SUBINTERFACES — one per VLAN (router-on-a-stick)
+! GigabitEthernet0/0 connects to the Layer 3 switch trunk port
+! ============================================================
+interface GigabitEthernet0/0
+ description TRUNK-TO-L3SWITCH
+ no shutdown
+!
+interface GigabitEthernet0/0.10
+ description VLAN10-Administration
+ encapsulation dot1Q 10
+ ip address 192.168.10.1 255.255.255.192
+ ip nat inside
+ ip access-group VLAN10-IN in
+!
+interface GigabitEthernet0/0.20
+ description VLAN20-Finance
+ encapsulation dot1Q 20
+ ip address 192.168.20.1 255.255.255.224
+ ip nat inside
+ ip access-group VLAN20-IN in
+!
+interface GigabitEthernet0/0.30
+ description VLAN30-Engineering
+ encapsulation dot1Q 30
+ ip address 192.168.30.1 255.255.255.224
+ ip nat inside
+!
+interface GigabitEthernet0/0.40
+ description VLAN40-HR-Payroll
+ encapsulation dot1Q 40
+ ip address 192.168.40.1 255.255.255.240
+ ip nat inside
+ ip access-group VLAN40-IN in
+!
+interface GigabitEthernet0/0.50
+ description VLAN50-Servers-IT
+ encapsulation dot1Q 50
+ ip address 192.168.50.1 255.255.255.248
+ ip nat inside
+!
+interface GigabitEthernet0/0.60
+ description VLAN60-Management
+ encapsulation dot1Q 60
+ ip address 192.168.60.1 255.255.255.252
+ ip nat inside
+!
+! ============================================================
+! WAN INTERFACE — connects to ISP (simulated with loopback)
+! In Packet Tracer use GigabitEthernet0/1
+! ============================================================
+interface GigabitEthernet0/1
+ description WAN-TO-ISP
+ ip address 203.0.113.2 255.255.255.252
+ ip nat outside
+ ip access-group WAN-BLOCK in
+ no shutdown
+!
+! ============================================================
+! DEFAULT ROUTE — send all unknown traffic to ISP
+! ============================================================
+ip route 0.0.0.0 0.0.0.0 203.0.113.1
+!
+! ============================================================
+! NAT — PAT (overload) so all VLANs share the WAN IP
+! ============================================================
+ip nat inside source list NAT-POOL interface GigabitEthernet0/1 overload
+!
+ip access-list standard NAT-POOL
+ permit 192.168.10.0 0.0.0.63
+ permit 192.168.20.0 0.0.0.31
+ permit 192.168.30.0 0.0.0.31
+ permit 192.168.40.0 0.0.0.15
+ permit 192.168.50.0 0.0.0.7
+ permit 192.168.60.0 0.0.0.3
+!
+! ============================================================
+! ACCESS CONTROL LISTS (Security Policies)
+! Policy 1: Finance (VLAN20) cannot reach HR/Payroll (VLAN40)
+! Policy 2: HR (VLAN40) cannot reach Finance (VLAN20)
+! Policy 3: Only IT (VLAN50) can reach server subnet from any VLAN
+! Policy 4: Block inbound unsolicited WAN traffic
+! ============================================================
+!
+ip access-list extended VLAN20-IN
+ remark Finance VLAN - deny access to HR subnet
+ deny   ip 192.168.20.0 0.0.0.31 192.168.40.0 0.0.0.15
+ remark Finance VLAN - deny access to server subnet (only IT manages servers)
+ deny   ip 192.168.20.0 0.0.0.31 192.168.50.0 0.0.0.7
+ permit ip any any
+!
+ip access-list extended VLAN40-IN
+ remark HR VLAN - deny access to Finance subnet
+ deny   ip 192.168.40.0 0.0.0.15 192.168.20.0 0.0.0.31
+ remark HR VLAN - deny access to server subnet
+ deny   ip 192.168.40.0 0.0.0.15 192.168.50.0 0.0.0.7
+ permit ip any any
+!
+ip access-list extended VLAN10-IN
+ remark Admin VLAN - can reach all subnets except server VLAN
+ deny   ip 192.168.10.0 0.0.0.63 192.168.50.0 0.0.0.7
+ permit ip any any
+!
+ip access-list extended WAN-BLOCK
+ remark Block unsolicited inbound traffic from WAN
+ deny   ip any 192.168.0.0 0.0.255.255
+ permit ip any any
+!
+! ============================================================
+! DHCP SERVER — centralised pools per VLAN
+! (If you place a dedicated server, disable these pools)
+! ============================================================
+ip dhcp excluded-address 192.168.10.1 192.168.10.10
+ip dhcp excluded-address 192.168.20.1 192.168.20.5
+ip dhcp excluded-address 192.168.30.1 192.168.30.5
+ip dhcp excluded-address 192.168.40.1 192.168.40.5
+ip dhcp excluded-address 192.168.50.1 192.168.50.5
+ip dhcp excluded-address 192.168.60.1 192.168.60.2
+!
+ip dhcp pool VLAN10-Admin
+ network 192.168.10.0 255.255.255.192
+ default-router 192.168.10.1
+ dns-server 192.168.50.2
+ lease 1
+!
+ip dhcp pool VLAN20-Finance
+ network 192.168.20.0 255.255.255.224
+ default-router 192.168.20.1
+ dns-server 192.168.50.2
+ lease 1
+!
+ip dhcp pool VLAN30-Engineering
+ network 192.168.30.0 255.255.255.224
+ default-router 192.168.30.1
+ dns-server 192.168.50.2
+ lease 1
+!
+ip dhcp pool VLAN40-HR
+ network 192.168.40.0 255.255.255.240
+ default-router 192.168.40.1
+ dns-server 192.168.50.2
+ lease 1
+!
+! ============================================================
+! VTY LINES — SSH management
+! ============================================================
+line vty 0 4
+ login local
+ transport input ssh
+!
+line con 0
+ password cisco123
+ login
+!
+crypto key generate rsa modulus 1024
+ip ssh version 2
+!
+end
